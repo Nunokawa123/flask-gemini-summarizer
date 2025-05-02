@@ -27,7 +27,10 @@ def fetch_pdf_from_kintone(record_id):
         "app": APP_ID,
         "id": record_id
     }
-    res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
+   res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
+print("✅ kintone APIレスポンスコード:", res.status_code)
+print("📦 レスポンス内容:", res.text)
+
     file_info = res.json()["record"][FIELD_CODE_ATTACHMENT]["value"][0]
     file_key = file_info["fileKey"]
     file_name = file_info["name"]
