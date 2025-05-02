@@ -6,24 +6,27 @@ import fitz  # PyMuPDF
 import tempfile
 import traceback
 import base64
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # .envから環境変数を読み込む
 
-# .envファイルを読み込む（セキュアにユーザー名とパスワードを管理）
+# .env読み込み（ローカル開発時のみ。Renderでは不要）
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# 環境変数
+# 環境変数から設定を読み込む
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 KINTONE_DOMAIN = "https://nunokawa.cybozu.com"
-API_TOKEN = os.environ.get("API_TOKEN")  # レコード取得には使える
+API_TOKEN = os.environ.get("API_TOKEN")
 KINTONE_USER = os.environ.get("KINTONE_USER")
 KINTONE_PASS = os.environ.get("KINTONE_PASS")
 APP_ID = 563
 FIELD_CODE_ATTACHMENT = "添付ファイル"
 FIELD_CODE_SUMMARY = "要約文章"
 
+# ----------------------------------------
+# PDFをkintoneから取得して保存（ベーシック認証）
+# ----------------------------------------
 def fetch_pdf_from_kintone(record_id):
     print(f"📥 fetch_pdf_from_kintone() called with record_id = {record_id}", flush=True)
 
@@ -35,7 +38,7 @@ def fetch_pdf_from_kintone(record_id):
         "id": record_id
     }
 
-    # レコードの取得（APIトークンでOK）
+    # レコードの取得
     res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
     print("✅ kintone APIレスポンスコード:", res.status_code, flush=True)
     print("📦 レスポンス内容:", res.text, flush=True)
@@ -49,7 +52,7 @@ def fetch_pdf_from_kintone(record_id):
     file_name = file_info["name"]
     print(f"📄 fileKey: {file_key}, fileName: {file_name}", flush=True)
 
-    # ベーシック認証の準備（ユーザー名:パスワード）
+    # ベーシック認証でファイルダウンロード
     auth_string = f"{KINTONE_USER}:{KINTONE_PASS}"
     basic_auth = base64.b64encode(auth_string.encode()).decode()
 
@@ -58,7 +61,6 @@ def fetch_pdf_from_kintone(record_id):
         "Content-Type": "application/json"
     }
 
-    # ファイルダウンロード（ベーシック認証）
     res_file = requests.post(
         f"{KINTONE_DOMAIN}/k/v1/file.json",
         headers=file_headers,
@@ -74,6 +76,9 @@ def fetch_pdf_from_kintone(record_id):
     print(f"📁 PDF saved to: {temp_path} (size: {len(res_file.content)} bytes)", flush=True)
     return temp_path
 
+# ----------------------------------------
+# PDF → テキスト抽出（PyMuPDF）
+# ----------------------------------------
 def extract_text_from_pdf(file_path):
     doc = fitz.open(file_path)
     text = ""
@@ -81,6 +86,9 @@ def extract_text_from_pdf(file_path):
         text += page.get_text()
     return text
 
+# ----------------------------------------
+# Gemini APIで要約
+# ----------------------------------------
 def gemini_summarize(text, prompt="以下を要約してください："):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
@@ -93,9 +101,18 @@ def gemini_summarize(text, prompt="以下を要約してください："):
         ]
     }
     res = requests.post(url, json=payload)
-    gemini = res.json()
-    return gemini.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "⚠ 要約できませんでした")
+    
+    try:
+        gemini = res.json()
+        return gemini.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "⚠ 要約できませんでした")
+    except Exception as e:
+        print("❌ Gemini API解析エラー:", e, flush=True)
+        print("📡 Geminiレスポンス:", res.text[:200], flush=True)
+        return "⚠ Geminiからの要約に失敗しました"
 
+# ----------------------------------------
+# kintoneに要約を書き戻す
+# ----------------------------------------
 def write_back_to_kintone(record_id, summary_text):
     headers = {
         "X-Cybozu-API-Token": API_TOKEN,
@@ -111,6 +128,9 @@ def write_back_to_kintone(record_id, summary_text):
     res = requests.put(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, json=body)
     return res.status_code, res.text
 
+# ----------------------------------------
+# メインエンドポイント
+# ----------------------------------------
 @app.route("/", methods=["POST"])
 def summarize():
     print("🚀 /summarize POST 受信！", flush=True)
@@ -135,6 +155,9 @@ def summarize():
         traceback.print_exc()
         return jsonify({"error": str(e)})
 
+# ----------------------------------------
+# アプリ起動
+# ----------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
