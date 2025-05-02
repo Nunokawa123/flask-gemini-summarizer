@@ -27,54 +27,28 @@ FIELD_CODE_SUMMARY = "要約文章"
 # ----------------------------------------
 # PDFをkintoneから取得して保存（ベーシック認証）
 # ----------------------------------------
-def fetch_pdf_from_kintone(record_id):
-    print(f"📥 fetch_pdf_from_kintone() called with record_id = {record_id}", flush=True)
+# --- ここを置き換える ---
+file_headers = {
+    "X-Cybozu-API-Token": API_TOKEN
+}
 
-    headers = {
-        "X-Cybozu-API-Token": API_TOKEN,
-    }
-    params = {
-        "app": APP_ID,
-        "id": record_id
-    }
+res_file = requests.get(
+    f"{KINTONE_DOMAIN}/k/v1/file.json",
+    headers=file_headers,
+    params={"fileKey": file_key}
+)
 
-    # レコードの取得
-    res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
-    print("✅ kintone APIレスポンスコード:", res.status_code, flush=True)
-    print("📦 レスポンス内容:", res.text, flush=True)
+print("📡 file.json レスポンスコード:", res_file.status_code, flush=True)
+print("📡 内容（先頭100文字）:", res_file.content[:100], flush=True)
 
-    record_data = res.json().get("record", {})
-    if FIELD_CODE_ATTACHMENT not in record_data or not record_data[FIELD_CODE_ATTACHMENT]["value"]:
-        raise Exception("添付ファイルが見つかりません")
+# ファイル保存
+temp_path = os.path.join(tempfile.gettempdir(), file_name)
+with open(temp_path, "wb") as f:
+    f.write(res_file.content)
 
-    file_info = record_data[FIELD_CODE_ATTACHMENT]["value"][0]
-    file_key = file_info["fileKey"]
-    file_name = file_info["name"]
-    print(f"📄 fileKey: {file_key}, fileName: {file_name}", flush=True)
+print(f"📁 PDF saved to: {temp_path} (size: {len(res_file.content)} bytes)", flush=True)
+return temp_path
 
-    # ベーシック認証でファイルダウンロード
-    auth_string = f"{KINTONE_USER}:{KINTONE_PASS}"
-    basic_auth = base64.b64encode(auth_string.encode()).decode()
-
-    file_headers = {
-        "Authorization": f"Basic {basic_auth}",
-        "Content-Type": "application/json"
-    }
-
-    res_file = requests.post(
-        f"{KINTONE_DOMAIN}/k/v1/file.json",
-        headers=file_headers,
-        json={"fileKey": file_key}
-    )
-    print("📡 file.json レスポンスコード:", res_file.status_code, flush=True)
-    print("📡 内容（先頭100文字）:", res_file.content[:100], flush=True)
-
-    temp_path = os.path.join(tempfile.gettempdir(), file_name)
-    with open(temp_path, "wb") as f:
-        f.write(res_file.content)
-
-    print(f"📁 PDF saved to: {temp_path} (size: {len(res_file.content)} bytes)", flush=True)
-    return temp_path
 
 # ----------------------------------------
 # PDF → テキスト抽出（PyMuPDF）
