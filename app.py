@@ -8,6 +8,7 @@ import tempfile
 app = Flask(__name__)
 CORS(app)
 
+# 環境変数など
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 KINTONE_DOMAIN = "https://nunokawa.cybozu.com"
 API_TOKEN = "iRuCw2VNtl3euFtsM1iiZN9RfqpQI6MHlmTcEKMw"
@@ -27,11 +28,16 @@ def fetch_pdf_from_kintone(record_id):
         "app": APP_ID,
         "id": record_id
     }
-   res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
-print("✅ kintone APIレスポンスコード:", res.status_code)
-print("📦 レスポンス内容:", res.text)
 
-    file_info = res.json()["record"][FIELD_CODE_ATTACHMENT]["value"][0]
+    res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
+    print("✅ kintone APIレスポンスコード:", res.status_code)
+    print("📦 レスポンス内容:", res.text)
+
+    record_data = res.json().get("record", {})
+    if FIELD_CODE_ATTACHMENT not in record_data or not record_data[FIELD_CODE_ATTACHMENT]["value"]:
+        raise Exception("添付ファイルが見つかりません")
+
+    file_info = record_data[FIELD_CODE_ATTACHMENT]["value"][0]
     file_key = file_info["fileKey"]
     file_name = file_info["name"]
 
@@ -88,7 +94,7 @@ def write_back_to_kintone(record_id, summary_text):
     return res.status_code, res.text
 
 # -------------------------------
-# メインルート：/summarize
+# メインルート：/（POST）
 # -------------------------------
 @app.route("/", methods=["POST"])
 def summarize():
@@ -102,9 +108,14 @@ def summarize():
         summary = gemini_summarize(text, prompt)
         status, response_text = write_back_to_kintone(record_id, summary)
 
-        return jsonify({"summary": summary, "kintone_status": status, "kintone_response": response_text})
+        return jsonify({
+            "summary": summary,
+            "kintone_status": status,
+            "kintone_response": response_text
+        })
 
     except Exception as e:
+        print("❌ 例外エラー:", str(e))
         return jsonify({"error": str(e)})
 
 if __name__ == "__main__":
