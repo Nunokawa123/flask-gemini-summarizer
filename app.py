@@ -32,7 +32,6 @@ def fetch_pdf_from_kintone(record_id):
         "id": record_id
     }
 
-    # ① レコード情報をGETで取得
     res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
     print("✅ kintone APIレスポンスコード:", res.status_code, flush=True)
     print("📦 レスポンス内容:", res.text, flush=True)
@@ -41,17 +40,23 @@ def fetch_pdf_from_kintone(record_id):
     if FIELD_CODE_ATTACHMENT not in record_data or not record_data[FIELD_CODE_ATTACHMENT]["value"]:
         raise Exception("添付ファイルが見つかりません")
 
-    # ② 添付ファイル情報を取り出す
     file_info = record_data[FIELD_CODE_ATTACHMENT]["value"][0]
     file_key = file_info["fileKey"]
     file_name = file_info["name"]
 
     print(f"📄 fileKey: {file_key}, fileName: {file_name}", flush=True)
 
-    # ③ ファイルをPOSTで取得
-    res_file = requests.post(f"{KINTONE_DOMAIN}/k/v1/file.json", headers=headers, json={"fileKey": file_key})
+    file_headers = {
+        "X-Cybozu-API-Token": API_TOKEN,
+        "Content-Type": "application/json"
+    }
 
-    # ④ 一時保存先に保存
+    res_file = requests.post(
+        f"{KINTONE_DOMAIN}/k/v1/file.json",
+        headers=file_headers,
+        json={"fileKey": file_key}
+    )
+
     temp_path = os.path.join(tempfile.gettempdir(), file_name)
     with open(temp_path, "wb") as f:
         f.write(res_file.content)
@@ -59,6 +64,7 @@ def fetch_pdf_from_kintone(record_id):
     print(f"📁 PDF saved to: {temp_path} (size: {len(res_file.content)} bytes)", flush=True)
 
     return temp_path
+
 
 # -------------------------------
 # PDF → テキスト抽出（PyMuPDF）
