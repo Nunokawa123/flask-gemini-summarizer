@@ -25,14 +25,14 @@ def fetch_pdf_from_kintone(record_id):
     
     headers = {
         "X-Cybozu-API-Token": API_TOKEN,
-        "Content-Type": "application/json"
     }
-    body = {
+
+    params = {
         "app": APP_ID,
         "id": record_id
     }
 
-    res = requests.post(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, json=body)
+    res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
     print("✅ kintone APIレスポンスコード:", res.status_code, flush=True)
     print("📦 レスポンス内容:", res.text, flush=True)
 
@@ -51,6 +51,7 @@ def fetch_pdf_from_kintone(record_id):
     with open(temp_path, "wb") as f:
         f.write(res_file.content)
     return temp_path
+
 
 
 # -------------------------------
