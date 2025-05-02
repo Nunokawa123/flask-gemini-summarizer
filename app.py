@@ -107,10 +107,12 @@ def write_back_to_kintone(record_id, summary_text):
 # -------------------------------
 @app.route("/", methods=["POST"])
 def summarize():
+    print("🚀 /summarize POST 受信！")
     try:
         data = request.json
         record_id = data.get("recordId")
         prompt = data.get("prompt", "以下を要約してください：")
+
 
         pdf_path = fetch_pdf_from_kintone(record_id)
         text = extract_text_from_pdf(pdf_path)
