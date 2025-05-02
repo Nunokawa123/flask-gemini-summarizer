@@ -2,3 +2,5 @@ flask
 flask-cors
 requests
 PyMuPDF
+python-dotenv
+
