@@ -4,11 +4,12 @@ import requests
 import os
 import fitz  # PyMuPDF
 import tempfile
+import traceback  # ← 例外詳細出力用
 
 app = Flask(__name__)
 CORS(app)
 
-# 環境変数など
+# 環境・設定
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 KINTONE_DOMAIN = "https://nunokawa.cybozu.com"
 API_TOKEN = "iRuCw2VNtl3euFtsM1iiZN9RfqpQI6MHlmTcEKMw"
@@ -20,7 +21,7 @@ FIELD_CODE_SUMMARY = "要約文章"
 # PDFをkintoneから取得して保存
 # -------------------------------
 def fetch_pdf_from_kintone(record_id):
-    print(f"📥 fetch_pdf_from_kintone() called with record_id = {record_id}")
+    print(f"📥 fetch_pdf_from_kintone() called with record_id = {record_id}", flush=True)
     
     headers = {
         "X-Cybozu-API-Token": API_TOKEN,
@@ -31,13 +32,9 @@ def fetch_pdf_from_kintone(record_id):
         "id": record_id
     }
 
-    try:
-        res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
-        print("✅ kintone APIレスポンスコード:", res.status_code)
-        print("📦 レスポンス内容:", res.text)
-    except Exception as e:
-        print("❌ API通信エラー:", str(e))
-        raise e
+    res = requests.get(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, params=params)
+    print("✅ kintone APIレスポンスコード:", res.status_code, flush=True)
+    print("📦 レスポンス内容:", res.text, flush=True)
 
     record_data = res.json().get("record", {})
     if FIELD_CODE_ATTACHMENT not in record_data or not record_data[FIELD_CODE_ATTACHMENT]["value"]:
@@ -47,14 +44,13 @@ def fetch_pdf_from_kintone(record_id):
     file_key = file_info["fileKey"]
     file_name = file_info["name"]
 
-    print(f"📄 fileKey: {file_key}, fileName: {file_name}")
+    print(f"📄 fileKey: {file_key}, fileName: {file_name}", flush=True)
 
     res_file = requests.post(f"{KINTONE_DOMAIN}/k/v1/file.json", headers=headers, json={"fileKey": file_key})
     temp_path = os.path.join(tempfile.gettempdir(), file_name)
     with open(temp_path, "wb") as f:
         f.write(res_file.content)
     return temp_path
-
 
 # -------------------------------
 # PDF → テキスト抽出（PyMuPDF）
@@ -107,12 +103,11 @@ def write_back_to_kintone(record_id, summary_text):
 # -------------------------------
 @app.route("/", methods=["POST"])
 def summarize():
-    print("🚀 /summarize POST 受信！")
+    print("🚀 /summarize POST 受信！", flush=True)
     try:
         data = request.json
         record_id = data.get("recordId")
         prompt = data.get("prompt", "以下を要約してください：")
-
 
         pdf_path = fetch_pdf_from_kintone(record_id)
         text = extract_text_from_pdf(pdf_path)
@@ -126,7 +121,8 @@ def summarize():
         })
 
     except Exception as e:
-        print("❌ 例外エラー:", str(e))
+        print("❌ 例外発生:", str(e), flush=True)
+        traceback.print_exc()
         return jsonify({"error": str(e)})
 
 if __name__ == "__main__":
