@@ -3,4 +3,8 @@ flask-cors
 requests
 PyMuPDF
 python-dotenv
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
 
