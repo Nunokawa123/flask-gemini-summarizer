@@ -118,12 +118,12 @@ def create_summary_pdf(text, file_name):
     import urllib.request
 
     pdf_path = os.path.join(tempfile.gettempdir(), f"summary_{file_name}")
-    font_path = os.path.join(tempfile.gettempdir(), "NotoSansJP-Regular.ttf")
+    font_path = os.path.join(tempfile.gettempdir(), "NotoSansJP-Regular.otf")
 
-    # 一度だけフォントをダウンロード（Render環境対応）
+    # 正しいURLで日本語フォントをDL（1回のみ）
     if not os.path.exists(font_path):
         urllib.request.urlretrieve(
-            "https://github.com/googlefonts/noto-cjk/blob/main/Sans/OTF/Japanese/NotoSansJP-Regular.otf?raw=true",
+            "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansJP-Regular.otf",
             font_path
         )
 
