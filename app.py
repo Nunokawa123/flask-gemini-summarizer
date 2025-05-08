@@ -128,8 +128,8 @@ def create_summary_pdf(text, title):
                 self.ln(3)
 
     pdf = SummaryPDF()
-    pdf.add_page()
     pdf.add_font("Mplus", "", font_path, uni=True)
+    pdf.add_page()
     pdf.body(text)
     pdf.output(pdf_path)
     return pdf_path, file_name
