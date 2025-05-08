@@ -11,6 +11,9 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
 import json
+from pdf2image import convert_from_path
+from PIL import Image
+import pytesseract
 
 app = Flask(__name__)
 CORS(app)
@@ -29,7 +32,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON = json.loads(os.environ.get("GOOGLE_SERVICE_ACCOUNT_
 PORT = int(os.environ.get("PORT", 10000))
 
 # -------------------------------
-# kintoneからPDF取得
+# PDFをkintoneから取得
 # -------------------------------
 def fetch_pdf_from_kintone(record_id):
     headers = {"X-Cybozu-API-Token": API_TOKEN}
@@ -47,29 +50,21 @@ def fetch_pdf_from_kintone(record_id):
     return temp_path, file_name
 
 # -------------------------------
-# Google Driveアップロード
+# Driveにアップロード
 # -------------------------------
 def upload_to_drive_and_get_link(local_path, file_name, folder_id):
     creds = service_account.Credentials.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
     service = build("drive", "v3", credentials=creds)
+
     file_metadata = {"name": file_name, "parents": [folder_id]}
     media = MediaFileUpload(local_path, mimetype="application/pdf")
     uploaded = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
     service.permissions().create(fileId=uploaded["id"], body={"role": "reader", "type": "anyone"}).execute()
     return f"https://drive.google.com/file/d/{uploaded['id']}/view?usp=sharing"
 
 # -------------------------------
-# テキスト抽出
-# -------------------------------
-def extract_text_from_pdf(file_path):
-    doc = fitz.open(file_path)
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    return text
-
-# -------------------------------
-# Geminiで要約
+# Gemini API
 # -------------------------------
 def gemini_summarize(text, prompt="以下を要約してください："):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
@@ -82,34 +77,59 @@ def gemini_summarize(text, prompt="以下を要約してください："):
         return "⚠ Geminiからの要約に失敗しました"
 
 # -------------------------------
+# PDF → テキスト抽出（OCR fallback）
+# -------------------------------
+def extract_text_from_pdf(file_path):
+    try:
+        doc = fitz.open(file_path)
+        text = ""
+        for page in doc:
+            page_text = page.get_text().strip()
+            text += page_text
+        if text.strip():
+            return text
+    except Exception as e:
+        print("❌ PyMuPDF失敗:", e)
+
+    try:
+        images = convert_from_path(file_path)
+        text = ""
+        for image in images:
+            text += pytesseract.image_to_string(image, lang='jpn')
+        return text
+    except Exception as e:
+        print("❌ OCRも失敗:", e)
+        return ""
+
+# -------------------------------
 # 要約PDF作成
 # -------------------------------
-def create_summary_pdf(text, title_base):
-    date_str = datetime.now().strftime("%Y%m%d")
-    file_name = f"要約_{title_base}_{date_str}.pdf"
+def create_summary_pdf(text, title):
+    today = datetime.now().strftime("%Y%m%d")
+    file_name = f"要約_{title}_{today}.pdf"
     pdf_path = os.path.join(tempfile.gettempdir(), file_name)
-    font_path = "./fonts/mplus-1p-regular.ttf"
+    font_path = os.path.join("fonts", "mplus-1p-regular.ttf")
 
     class SummaryPDF(FPDF):
         def header(self):
-            self.set_font("Mplus", "", 10)
+            self.set_font("Mplus", '', 10)
             self.cell(0, 10, datetime.now().strftime("%Y-%m-%d"), ln=True, align='R')
             self.ln(5)
 
         def footer(self):
             self.set_y(-15)
-            self.set_font("Mplus", "", 8)
+            self.set_font("Mplus", '', 8)
             self.cell(0, 10, f"Page {self.page_no()}", align='C')
 
         def body(self, text):
-            self.set_font("Mplus", "", 12)
+            self.set_font("Mplus", '', 12)
             for line in text.split('\n'):
                 self.multi_cell(0, 10, line)
-                self.ln(2)
+                self.ln(3)
 
     pdf = SummaryPDF()
-    pdf.add_font("Mplus", "", font_path, uni=True)
     pdf.add_page()
+    pdf.add_font("Mplus", "", font_path, uni=True)
     pdf.body(text)
     pdf.output(pdf_path)
     return pdf_path, file_name
@@ -124,7 +144,7 @@ def write_back_to_kintone(record_id, field_code, value):
     return res.status_code, res.text
 
 # -------------------------------
-# メイン処理
+# Flaskルート
 # -------------------------------
 @app.route("/", methods=["POST"])
 def summarize():
@@ -133,24 +153,16 @@ def summarize():
         record_id = data.get("recordId")
         prompt = data.get("prompt", "以下を要約してください：")
 
-        # ステップ1：PDF取得
-        pdf_path, file_name = fetch_pdf_from_kintone(record_id)
-        title_base = os.path.splitext(file_name)[0].replace(" ", "_")
-
-        # ステップ2：原本をDriveに保存
-        original_link = upload_to_drive_and_get_link(pdf_path, file_name, DRIVE_FOLDER_ID)
+        pdf_path, title = fetch_pdf_from_kintone(record_id)
+        original_link = upload_to_drive_and_get_link(pdf_path, title, DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_ORIGINAL_LINK, original_link)
 
-        # ステップ3：要約処理
         text = extract_text_from_pdf(pdf_path)
         summary = gemini_summarize(text, prompt)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY, summary)
 
-        # ステップ4：要約PDF作成
-        summary_pdf_path, summary_pdf_name = create_summary_pdf(summary, title_base)
-
-        # ステップ5：要約PDFをDriveに保存
-        summary_link = upload_to_drive_and_get_link(summary_pdf_path, summary_pdf_name, DRIVE_FOLDER_ID)
+        summary_pdf_path, summary_file_name = create_summary_pdf(summary, title.replace(".pdf", ""))
+        summary_link = upload_to_drive_and_get_link(summary_pdf_path, summary_file_name, DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY_LINK, summary_link)
 
         return jsonify({
