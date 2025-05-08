@@ -2,13 +2,12 @@ flask
 flask-cors
 requests
 PyMuPDF
-fpdf==1.7.2
+fpdf
 google-api-python-client
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
 python-dotenv
-pytesseract
 pdf2image
-Pillow
-
+pillow
+pytesseract
