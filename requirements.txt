@@ -2,11 +2,10 @@ flask
 flask-cors
 requests
 PyMuPDF
-fpdf
+fpdf==1.7.2
 google-api-python-client
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
 python-dotenv
-
 
