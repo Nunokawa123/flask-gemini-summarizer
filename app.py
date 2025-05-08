@@ -114,11 +114,43 @@ def gemini_summarize(text, prompt="以下を要約してください："):
 # 要約をPDFに変換
 # -------------------------------
 def create_summary_pdf(text, file_name):
+    from fpdf import FPDF
+    import urllib.request
+
     pdf_path = os.path.join(tempfile.gettempdir(), f"summary_{file_name}")
+    font_path = os.path.join(tempfile.gettempdir(), "NotoSansJP-Regular.ttf")
+
+    # 一度だけフォントをダウンロード（Render環境対応）
+    if not os.path.exists(font_path):
+        urllib.request.urlretrieve(
+            "https://github.com/googlefonts/noto-cjk/blob/main/Sans/OTF/Japanese/NotoSansJP-Regular.otf?raw=true",
+            font_path
+        )
+
+    class SummaryPDF(FPDF):
+        def header(self):
+            self.set_font("Noto", '', 16)
+            self.cell(0, 10, "AI要約レポート", ln=True, align='C')
+            self.set_font("Noto", '', 10)
+            self.cell(0, 10, datetime.now().strftime("%Y-%m-%d"), ln=True, align='R')
+            self.ln(5)
+
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Noto", '', 8)
+            self.cell(0, 10, f"Page {self.page_no()}", align='C')
+
+        def body(self, text):
+            self.set_font("Noto", '', 12)
+            for line in text.split('\n'):
+                self.multi_cell(0, 10, line)
+
     pdf = SummaryPDF()
     pdf.add_page()
+    pdf.add_font("Noto", "", font_path, uni=True)
     pdf.body(text)
     pdf.output(pdf_path)
+
     return pdf_path
 
 
