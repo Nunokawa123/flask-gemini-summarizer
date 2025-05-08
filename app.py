@@ -97,7 +97,7 @@ def extract_text_from_pdf(file_path):
     # 2. テキストが空 or 不完全なら OCR を試す
     if not text.strip():
         try:
-            images = convert_from_path(file_path, dpi=300)
+            images = convert_from_path(file_path, dpi=400)
             ocr_text = ""
             for img in images:
                 ocr_text += pytesseract.image_to_string(img, lang='jpn')
