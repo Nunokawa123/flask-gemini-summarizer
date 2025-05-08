@@ -77,29 +77,37 @@ def gemini_summarize(text, prompt="以下を要約してください："):
         return "⚠ Geminiからの要約に失敗しました"
 
 # -------------------------------
-# PDF → テキスト抽出（OCR fallback）
+# PDFからテキスト抽出（OCR対応）
 # -------------------------------
 def extract_text_from_pdf(file_path):
-    try:
-        doc = fitz.open(file_path)
-        text = ""
-        for page in doc:
-            page_text = page.get_text().strip()
-            text += page_text
-        if text.strip():
-            return text
-    except Exception as e:
-        print("❌ PyMuPDF失敗:", e)
+    import fitz  # PyMuPDF
+    from pdf2image import convert_from_path
+    from PIL import Image
+    import pytesseract
 
+    text = ""
     try:
-        images = convert_from_path(file_path)
-        text = ""
-        for image in images:
-            text += pytesseract.image_to_string(image, lang='jpn')
-        return text
+        # 1. 通常のテキスト抽出（PyMuPDF）
+        doc = fitz.open(file_path)
+        for page in doc:
+            text += page.get_text()
     except Exception as e:
-        print("❌ OCRも失敗:", e)
-        return ""
+        print(f"⚠️ PyMuPDF読み込みエラー: {e}")
+
+    # 2. テキストが空 or 不完全なら OCR を試す
+    if not text.strip():
+        try:
+            images = convert_from_path(file_path, dpi=300)
+            ocr_text = ""
+            for img in images:
+                ocr_text += pytesseract.image_to_string(img, lang='jpn')
+            text = ocr_text
+            print("🧠 OCRによりテキスト抽出成功")
+        except Exception as e:
+            print(f"❌ OCRエラー: {e}")
+
+    return text
+
 
 # -------------------------------
 # 要約PDF作成
