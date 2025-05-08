@@ -92,7 +92,7 @@ def gemini_summarize(text, prompt="以下を要約してください："):
 
 def create_summary_pdf(text, title):
     pdf_path = os.path.join(tempfile.gettempdir(), f"{title}_{datetime.now().strftime('%Y%m%d')}.pdf")
-    font_path = "/content/mplus_fonts/M__1p/mplus-1p-regular.ttf"
+    font_path = os.path.join(os.path.dirname(__file__), "fonts", "mplus-1p-regular.ttf")
     pdf = SummaryPDF()
     pdf.add_font("Mplus", "", font_path, uni=True)
     pdf.add_page()
