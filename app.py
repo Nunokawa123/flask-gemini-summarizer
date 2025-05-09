@@ -14,6 +14,8 @@ from pdf2image import convert_from_path
 from PIL import Image
 import pytesseract
 import json
+import io
+from google.cloud import vision
 
 app = Flask(__name__)
 CORS(app)
@@ -70,9 +72,8 @@ def gemini_summarize(text, prompt="以下を要約してください："):
 
 # --- Cloud Vision OCR ---
 def ocr_with_google_vision(file_path):
-    from google.cloud import vision
-    import io
-    client = vision.ImageAnnotatorClient.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
+    creds = service_account.Credentials.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
+    client = vision.ImageAnnotatorClient(credentials=creds)
     images = convert_from_path(file_path, dpi=300)
     full_text = ""
     for img in images:
@@ -81,7 +82,7 @@ def ocr_with_google_vision(file_path):
         buf.seek(0)
         image = vision.Image(content=buf.read())
         response = client.document_text_detection(image=image)
-        if response.error.message:
+        if getattr(response.error, "message", None):
             raise Exception(response.error.message)
         full_text += response.full_text_annotation.text + "\n"
     return full_text
