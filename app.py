@@ -137,32 +137,20 @@ def create_summary_pdf(summary_text, title, prompt_text):
         def add_paragraphs(self, text):
             self.set_font("Mplus", '', 12)
             for line in text.split('\n'):
-                clean_line = line.replace('**', '').replace('###', '').strip()
-                if clean_line:
-                    self.multi_cell(0, 10, clean_line, align='L')
+                cleaned = line.strip()
+                if cleaned and not cleaned.startswith('|') and not cleaned.startswith('#'):
+                    self.multi_cell(0, 10, cleaned, align='L')
                     self.ln(2)
-
-        def add_table(self, text):
-            self.set_font("Mplus", '', 12)
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            for row in lines:
-                columns = row.split(',')
-                for col in columns:
-                    self.cell(40, 10, col.strip(), border=1)
-                self.ln()
 
     pdf = SummaryPDF()
     pdf.add_font("Mplus", "", font_path, uni=True)
     pdf.add_page()
     pdf.add_title(title)
-
-    if "表形式" in prompt_text:
-        pdf.add_table(summary_text)
-    else:
-        pdf.add_paragraphs(summary_text)
-
+    pdf.add_paragraphs(summary_text)
     pdf.output(pdf_path)
+
     return pdf_path, file_name
+
 
 # --- kintone書き戻し ---
 def write_back_to_kintone(record_id, field_code, value):
