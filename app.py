@@ -137,9 +137,9 @@ def create_summary_pdf(summary_text, title, prompt_text):
         def add_paragraphs(self, text):
             self.set_font("Mplus", '', 12)
             for line in text.split('\n'):
-                line = line.strip()
-                if line:
-                    self.multi_cell(0, 10, line)
+                clean_line = line.replace('**', '').replace('###', '').strip()
+                if clean_line:
+                    self.multi_cell(0, 10, clean_line, align='L')
                     self.ln(2)
 
         def add_table(self, text):
