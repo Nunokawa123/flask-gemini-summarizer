@@ -14,6 +14,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 import pytesseract
 import json
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -64,7 +65,9 @@ def gemini_summarize(text, prompt="以下を要約してください："):
     res = requests.post(url, json=payload)
     try:
         gemini = res.json()
-        return gemini.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "⚠ 要約できませんでした")
+        raw = gemini.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "⚠ 要約できませんでした")
+        clean = re.sub(r'[*#]{1,}', '', raw)
+        return clean.strip()
     except Exception:
         return "⚠ Geminiからの要約に失敗しました"
 
@@ -143,6 +146,8 @@ def create_summary_pdf(summary_text, title, prompt_text):
                         self.set_font("Mplus", '', 14)
                         self.cell(0, 10, cleaned, ln=True)
                         self.set_font("Mplus", '', 12)
+                    elif cleaned.startswith("・") or cleaned.startswith("■"):
+                        self.multi_cell(0, 10, cleaned, align='L')
                     else:
                         self.multi_cell(0, 10, cleaned, align='L')
                         self.ln(2)
