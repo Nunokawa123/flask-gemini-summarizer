@@ -1,3 +1,4 @@
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
@@ -14,8 +15,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 import pytesseract
 import json
-import io
-from google.cloud import vision
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -72,8 +72,9 @@ def gemini_summarize(text, prompt="以下を要約してください："):
 
 # --- Cloud Vision OCR ---
 def ocr_with_google_vision(file_path):
-    creds = service_account.Credentials.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
-    client = vision.ImageAnnotatorClient(credentials=creds)
+    from google.cloud import vision
+    import io
+    client = vision.ImageAnnotatorClient.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
     images = convert_from_path(file_path, dpi=300)
     full_text = ""
     for img in images:
@@ -82,7 +83,7 @@ def ocr_with_google_vision(file_path):
         buf.seek(0)
         image = vision.Image(content=buf.read())
         response = client.document_text_detection(image=image)
-        if getattr(response.error, "message", None):
+        if response.error.message:
             raise Exception(response.error.message)
         full_text += response.full_text_annotation.text + "\n"
     return full_text
@@ -112,8 +113,14 @@ def extract_text_from_pdf(file_path):
             print(f"❌ Cloud Vision失敗: {e}")
     return text
 
+# --- Gemini要約を整形 ---
+def clean_gemini_text(raw_text: str) -> str:
+    cleaned = re.sub(r'(\*\*|\*|#+)', '', raw_text)
+    cleaned = re.sub(r'\n\s*\n', '\n\n', cleaned)
+    return cleaned.strip()
+
 # --- PDF生成 ---
-def create_summary_pdf(text, title):
+def create_summary_pdf(text, title, prompt=""):
     today = datetime.now().strftime("%Y%m%d")
     file_name = f"要約_{title}_{today}.pdf"
     pdf_path = os.path.join(tempfile.gettempdir(), file_name)
@@ -128,10 +135,18 @@ def create_summary_pdf(text, title):
             self.set_font("Mplus", '', 8)
             self.cell(0, 10, f"Page {self.page_no()}", align='C')
         def body(self, text):
-            self.set_font("Mplus", '', 12)
-            for line in text.split('\n'):
-                self.multi_cell(0, 10, line)
-                self.ln(3)
+            lines = text.split('\n')
+            for line in lines:
+                if line.startswith("【") and line.endswith("】"):
+                    if "色付き" in prompt:
+                        self.set_text_color(220, 50, 50)
+                    self.set_font("Mplus", '', 16)
+                    self.cell(0, 10, line, ln=True)
+                    self.set_text_color(0, 0, 0)
+                else:
+                    self.set_font("Mplus", '', 12)
+                    self.multi_cell(0, 10, line)
+                    self.ln(3)
     pdf = SummaryPDF()
     pdf.add_font("Mplus", "", font_path, uni=True)
     pdf.add_page()
@@ -146,7 +161,7 @@ def write_back_to_kintone(record_id, field_code, value):
     res = requests.put(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, json=body)
     return res.status_code, res.text
 
-# --- メインエンドポイント ---
+# --- メイン処理 ---
 @app.route("/", methods=["POST"])
 def summarize():
     try:
@@ -156,10 +171,11 @@ def summarize():
         pdf_path, title = fetch_pdf_from_kintone(record_id)
         original_link = upload_to_drive_and_get_link(pdf_path, title, DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_ORIGINAL_LINK, original_link)
-        text = extract_text_from_pdf(pdf_path)
-        summary = gemini_summarize(text, prompt)
+        raw_text = extract_text_from_pdf(pdf_path)
+        cleaned_text = clean_gemini_text(raw_text)
+        summary = gemini_summarize(cleaned_text, prompt)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY, summary)
-        summary_pdf_path, summary_file_name = create_summary_pdf(summary, title.replace(".pdf", ""))
+        summary_pdf_path, summary_file_name = create_summary_pdf(summary, title.replace(".pdf", ""), prompt)
         summary_link = upload_to_drive_and_get_link(summary_pdf_path, summary_file_name, DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY_LINK, summary_link)
         return jsonify({
