@@ -11,4 +11,6 @@ python-dotenv
 pytesseract
 pdf2image
 pillow
+google-cloud-vision
+
 
