@@ -138,9 +138,14 @@ def create_summary_pdf(summary_text, title, prompt_text):
             self.set_font("Mplus", '', 12)
             for line in text.split('\n'):
                 cleaned = line.strip()
-                if cleaned and not cleaned.startswith('|') and not cleaned.startswith('#'):
-                    self.multi_cell(0, 10, cleaned, align='L')
-                    self.ln(2)
+                if cleaned:
+                    if cleaned.startswith("【") and cleaned.endswith("】"):
+                        self.set_font("Mplus", '', 14)
+                        self.cell(0, 10, cleaned, ln=True)
+                        self.set_font("Mplus", '', 12)
+                    else:
+                        self.multi_cell(0, 10, cleaned, align='L')
+                        self.ln(2)
 
     pdf = SummaryPDF()
     pdf.add_font("Mplus", "", font_path, uni=True)
@@ -148,9 +153,7 @@ def create_summary_pdf(summary_text, title, prompt_text):
     pdf.add_title(title)
     pdf.add_paragraphs(summary_text)
     pdf.output(pdf_path)
-
     return pdf_path, file_name
-
 
 # --- kintone書き戻し ---
 def write_back_to_kintone(record_id, field_code, value):
