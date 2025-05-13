@@ -12,7 +12,7 @@ pytesseract
 pdf2image
 pillow
 google-cloud-vision
-reportlab
+
 
 
 
