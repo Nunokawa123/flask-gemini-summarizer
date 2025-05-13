@@ -40,13 +40,16 @@ def fetch_pdf_from_kintone(record_id):
     record_data = res.json().get("record", {})
     file_info = record_data[FIELD_CODE_ATTACHMENT]["value"][0]
     file_key = file_info["fileKey"]
-    file_name = file_info["name"]
+    original_name = file_info["name"]
 
     res_file = requests.get(f"{KINTONE_DOMAIN}/k/v1/file.json", headers=headers, params={"fileKey": file_key})
-    temp_path = os.path.join(tempfile.gettempdir(), file_name)
+    today = datetime.now().strftime("%Y%m%d")
+    title = original_name.replace(".pdf", "")
+    renamed_name = f"原本_{title}_{today}.pdf"
+    temp_path = os.path.join(tempfile.gettempdir(), renamed_name)
     with open(temp_path, "wb") as f:
         f.write(res_file.content)
-    return temp_path, file_name
+    return temp_path, title
 
 # --- Driveにアップロード ---
 def upload_to_drive_and_get_link(local_path, file_name, folder_id):
@@ -175,7 +178,7 @@ def summarize():
         record_id = data.get("recordId")
         prompt = data.get("prompt", "以下を要約してください：")
         pdf_path, title = fetch_pdf_from_kintone(record_id)
-        original_link = upload_to_drive_and_get_link(pdf_path, title, DRIVE_FOLDER_ID)
+        original_link = upload_to_drive_and_get_link(pdf_path, os.path.basename(pdf_path), DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_ORIGINAL_LINK, original_link)
         text = extract_text_from_pdf(pdf_path)
         summary = gemini_summarize(text, prompt)
