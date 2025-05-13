@@ -15,14 +15,9 @@ from PIL import Image
 import pytesseract
 import json
 import re
-import io
-from google.cloud import vision
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.utils import ImageReader
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app)
 
 # --- 環境変数読み込み ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -81,6 +76,8 @@ def gemini_summarize(text, prompt="以下を要約してください："):
 
 # --- Cloud Vision OCR ---
 def ocr_with_google_vision(file_path):
+    from google.cloud import vision
+    import io
     client = vision.ImageAnnotatorClient.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
     images = convert_from_path(file_path, dpi=300)
     full_text = ""
@@ -120,7 +117,7 @@ def extract_text_from_pdf(file_path):
             print(f"❌ Cloud Vision失敗: {e}")
     return text
 
-# --- 要約PDF生成 ---
+# --- PDF生成 ---
 def create_summary_pdf(summary_text, title, prompt_text):
     today = datetime.now().strftime("%Y%m%d")
     file_name = f"要約_{title}_{today}.pdf"
@@ -166,19 +163,6 @@ def create_summary_pdf(summary_text, title, prompt_text):
     pdf.output(pdf_path)
     return pdf_path, file_name
 
-# --- 検索可能PDF生成 ---
-def create_searchable_pdf_from_vision(image_list, text_list, output_path):
-    c = canvas.Canvas(output_path, pagesize=A4)
-    width, height = A4
-    for img, text in zip(image_list, text_list):
-        c.drawImage(ImageReader(img), 0, 0, width=width, height=height)
-        c.setFont("Helvetica", 10)
-        c.setFillColorRGB(1, 1, 1, alpha=0.0)  # 透明テキスト
-        c.drawString(10, height - 30, text[:300])
-        c.showPage()
-    c.save()
-    return output_path
-
 # --- kintone書き戻し ---
 def write_back_to_kintone(record_id, field_code, value):
     headers = {"X-Cybozu-API-Token": API_TOKEN, "Content-Type": "application/json"}
@@ -197,43 +181,20 @@ def clear_attachment_field(record_id, field_code="添付ファイル"):
 @app.route("/", methods=["POST"])
 def summarize():
     try:
-        data = json.loads(request.data.decode("utf-8"))
+        data = request.json
         record_id = data.get("recordId")
         prompt = data.get("prompt", "以下を要約してください：")
-
         pdf_path, title = fetch_pdf_from_kintone(record_id)
-
-        # 原本PDF Driveアップロード
         original_link = upload_to_drive_and_get_link(pdf_path, os.path.basename(pdf_path), DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_ORIGINAL_LINK, original_link)
-
-        # テキスト抽出 → Gemini要約
         text = extract_text_from_pdf(pdf_path)
         summary = gemini_summarize(text, prompt)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY, summary)
-
-        # 要約PDF生成 → Driveアップロード
         summary_pdf_path, summary_file_name = create_summary_pdf(summary, title.replace(".pdf", ""), prompt)
         summary_link = upload_to_drive_and_get_link(summary_pdf_path, summary_pdf_path.split(os.sep)[-1], DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY_LINK, summary_link)
 
-        # OCR付き検索可能PDF生成
-        images = convert_from_path(pdf_path, dpi=300)
-        client = vision.ImageAnnotatorClient.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
-        ocr_texts = []
-        for img in images:
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            image = vision.Image(content=buf.read())
-            response = client.document_text_detection(image=image)
-            text = response.full_text_annotation.text if response and response.full_text_annotation else ""
-            ocr_texts.append(text)
-
-        searchable_pdf_path = os.path.join(tempfile.gettempdir(), f"検索可能_{title}.pdf")
-        create_searchable_pdf_from_vision(images, ocr_texts, searchable_pdf_path)
-        # searchable PDFは必要であればDriveに保存可能
-
+        # ✅ 元PDFをkintoneから削除
         clear_attachment_field(record_id)
 
         return jsonify({
@@ -241,7 +202,6 @@ def summarize():
             "original_link": original_link,
             "summary_pdf_link": summary_link
         })
-
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)})
