@@ -170,6 +170,13 @@ def write_back_to_kintone(record_id, field_code, value):
     res = requests.put(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, json=body)
     return res.status_code, res.text
 
+# --- 添付ファイル削除 ---
+def clear_attachment_field(record_id, field_code="添付ファイル"):
+    headers = {"X-Cybozu-API-Token": API_TOKEN, "Content-Type": "application/json"}
+    body = {"app": APP_ID, "id": record_id, "record": {field_code: {"value": []}}}
+    res = requests.put(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, json=body)
+    return res.status_code, res.text
+
 # --- メインエンドポイント ---
 @app.route("/", methods=["POST"])
 def summarize():
@@ -184,8 +191,12 @@ def summarize():
         summary = gemini_summarize(text, prompt)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY, summary)
         summary_pdf_path, summary_file_name = create_summary_pdf(summary, title.replace(".pdf", ""), prompt)
-        summary_link = upload_to_drive_and_get_link(summary_pdf_path, summary_file_name, DRIVE_FOLDER_ID)
+        summary_link = upload_to_drive_and_get_link(summary_pdf_path, summary_pdf_path.split(os.sep)[-1], DRIVE_FOLDER_ID)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY_LINK, summary_link)
+
+        # ✅ 元PDFをkintoneから削除
+        clear_attachment_field(record_id)
+
         return jsonify({
             "summary": summary,
             "original_link": original_link,
