@@ -17,7 +17,7 @@ import json
 import re
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- 環境変数読み込み ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -204,8 +204,10 @@ def clear_attachment_field(record_id, field_code="添付ファイル"):
     res = requests.put(f"{KINTONE_DOMAIN}/k/v1/record.json", headers=headers, json=body)
     return res.status_code, res.text
 
-@app.route("/", methods=["POST"])
+@app.route("/", methods=["POST", "OPTIONS", "HEAD"])
 def summarize():
+    if request.method == "OPTIONS" or request.method == "HEAD":
+        return '', 200
     try:
         data = request.json
         record_id = data.get("recordId")
