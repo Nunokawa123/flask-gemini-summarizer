@@ -28,6 +28,7 @@ FIELD_CODE_ATTACHMENT = "添付ファイル"
 FIELD_CODE_SUMMARY = "要約文章"
 FIELD_CODE_ORIGINAL_LINK = "原本リンク"
 FIELD_CODE_SUMMARY_LINK = "要約リンク"
+FIELD_CODE_DOC_TYPE = "文書種類"
 GOOGLE_SERVICE_ACCOUNT_JSON = json.loads(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"))
 PORT = int(os.environ.get("PORT", 10000))
 
@@ -50,19 +51,16 @@ FOLDER_STRUCTURE = {
     }
 }
 
-def classify_folder_name(title):
-    keywords = ["国税速報", "税理士新聞", "TAINS", "研修資料", "書籍"]
-    for keyword in keywords:
-        if keyword in title:
-            return keyword
+def classify_folder_by_radio_field(record_data):
+    doc_type = record_data.get(FIELD_CODE_DOC_TYPE, {}).get("value", "その他")
+    if doc_type in ["国税速報", "税理士新聞", "TAINS", "研修資料"]:
+        return doc_type
     return "その他"
 
-def upload_to_drive_with_classification(local_path, file_name, category_type, title):
-    folder_name = classify_folder_name(title)
-    folder_id = FOLDER_STRUCTURE.get(category_type, {}).get(folder_name)
-
+def upload_to_drive_with_doc_type(local_path, file_name, category_type, doc_type):
+    folder_id = FOLDER_STRUCTURE.get(category_type, {}).get(doc_type)
     if not folder_id:
-        print(f"❗ 無効なカテゴリ {category_type} またはフォルダ名 {folder_name}")
+        print(f"❗ 無効なカテゴリ {category_type} または文書種類 {doc_type}")
         raise ValueError("フォルダIDが見つかりません")
 
     creds = service_account.Credentials.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
@@ -73,6 +71,9 @@ def upload_to_drive_with_classification(local_path, file_name, category_type, ti
     uploaded = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
     service.permissions().create(fileId=uploaded["id"], body={"role": "reader", "type": "anyone"}).execute()
     return f"https://drive.google.com/file/d/{uploaded['id']}/view?usp=sharing"
+
+# 以下の関数定義やFlaskルーティングは変更なし（略）
+
 
 
 def fetch_pdf_from_kintone(record_id):
