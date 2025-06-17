@@ -51,21 +51,19 @@ FOLDER_STRUCTURE = {
 }
 
 def classify_folder_name(title):
-    keywords = {
-        "国税速報": "国税速報",
-        "税理士新聞": "税理士新聞",
-        "TAINS": "TAINS",
-        "研修資料": "研修資料",
-        "書籍": "書籍"
-    }
-    for key, folder in keywords.items():
-        if key in title:
-            return folder
+    keywords = ["国税速報", "税理士新聞", "TAINS", "研修資料", "書籍"]
+    for keyword in keywords:
+        if keyword in title:
+            return keyword
     return "その他"
 
 def upload_to_drive_with_classification(local_path, file_name, category_type, title):
     folder_name = classify_folder_name(title)
-    folder_id = FOLDER_STRUCTURE[category_type].get(folder_name)
+    folder_id = FOLDER_STRUCTURE.get(category_type, {}).get(folder_name)
+
+    if not folder_id:
+        print(f"❗ 無効なカテゴリ {category_type} またはフォルダ名 {folder_name}")
+        raise ValueError("フォルダIDが見つかりません")
 
     creds = service_account.Credentials.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
     service = build("drive", "v3", credentials=creds)
