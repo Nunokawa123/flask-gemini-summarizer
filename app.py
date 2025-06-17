@@ -72,10 +72,6 @@ def upload_to_drive_with_doc_type(local_path, file_name, category_type, doc_type
     service.permissions().create(fileId=uploaded["id"], body={"role": "reader", "type": "anyone"}).execute()
     return f"https://drive.google.com/file/d/{uploaded['id']}/view?usp=sharing"
 
-# 以下の関数定義やFlaskルーティングは変更なし（略）
-
-
-
 def fetch_pdf_from_kintone(record_id):
     headers = {"X-Cybozu-API-Token": API_TOKEN}
     params = {"app": APP_ID, "id": record_id}
@@ -92,7 +88,7 @@ def fetch_pdf_from_kintone(record_id):
     temp_path = os.path.join(tempfile.gettempdir(), renamed_name)
     with open(temp_path, "wb") as f:
         f.write(res_file.content)
-    return temp_path, title
+    return temp_path, title, record_data
 
 def gemini_summarize(text, prompt="以下を要約してください："):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
@@ -212,9 +208,10 @@ def summarize():
         data = request.json
         record_id = data.get("recordId")
         prompt = data.get("prompt", "以下を要約してください：")
-        pdf_path, title = fetch_pdf_from_kintone(record_id)
+        pdf_path, title, record_data = fetch_pdf_from_kintone(record_id)
+        doc_type = classify_folder_by_radio_field(record_data)
 
-        original_link = upload_to_drive_with_classification(pdf_path, os.path.basename(pdf_path), "原本", title)
+        original_link = upload_to_drive_with_doc_type(pdf_path, os.path.basename(pdf_path), "原本", doc_type)
         write_back_to_kintone(record_id, FIELD_CODE_ORIGINAL_LINK, original_link)
 
         text = extract_text_from_pdf(pdf_path)
@@ -222,7 +219,7 @@ def summarize():
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY, summary)
 
         summary_pdf_path, summary_file_name = create_summary_pdf(summary, title.replace(".pdf", ""), prompt)
-        summary_link = upload_to_drive_with_classification(summary_pdf_path, os.path.basename(summary_pdf_path), "要約", title)
+        summary_link = upload_to_drive_with_doc_type(summary_pdf_path, os.path.basename(summary_pdf_path), "要約", doc_type)
         write_back_to_kintone(record_id, FIELD_CODE_SUMMARY_LINK, summary_link)
 
         clear_attachment_field(record_id)
