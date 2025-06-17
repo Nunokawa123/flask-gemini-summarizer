@@ -65,7 +65,7 @@ def classify_folder_name(title):
 
 def upload_to_drive_with_classification(local_path, file_name, category_type, title):
     folder_name = classify_folder_name(title)
-    folder_id = FOLDER_STRUCTURE[category_type][folder_name]
+    folder_id = FOLDER_STRUCTURE[category_type].get(folder_name)
 
     creds = service_account.Credentials.from_service_account_info(GOOGLE_SERVICE_ACCOUNT_JSON)
     service = build("drive", "v3", credentials=creds)
@@ -75,6 +75,7 @@ def upload_to_drive_with_classification(local_path, file_name, category_type, ti
     uploaded = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
     service.permissions().create(fileId=uploaded["id"], body={"role": "reader", "type": "anyone"}).execute()
     return f"https://drive.google.com/file/d/{uploaded['id']}/view?usp=sharing"
+
 
 def fetch_pdf_from_kintone(record_id):
     headers = {"X-Cybozu-API-Token": API_TOKEN}
